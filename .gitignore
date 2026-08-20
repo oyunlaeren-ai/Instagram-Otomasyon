@@ -1,0 +1,15 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.env
+.env.local
+.DS_Store
+Thumbs.db
+coverage/
+*.sqlite
+*.sqlite-journal
+userData/
+
+cloudflared.exe*
