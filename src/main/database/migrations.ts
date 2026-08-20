@@ -148,5 +148,26 @@ export const MIGRATIONS: Migration[] = [
         createdAt TEXT NOT NULL
       );
     `
+  },
+  {
+    name: "004_web_collected_lists",
+    sql: `
+      CREATE TABLE IF NOT EXISTS web_collected_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sourceUsername TEXT NOT NULL,
+        listType TEXT NOT NULL,
+        username TEXT NOT NULL,
+        collectedAt TEXT NOT NULL,
+        UNIQUE(sourceUsername, listType, username)
+      );
+
+      CREATE TABLE IF NOT EXISTS web_collected_runs (
+        sourceUsername TEXT NOT NULL,
+        listType TEXT NOT NULL,
+        memberCount INTEGER NOT NULL,
+        collectedAt TEXT NOT NULL,
+        PRIMARY KEY (sourceUsername, listType)
+      );
+    `
   }
 ];

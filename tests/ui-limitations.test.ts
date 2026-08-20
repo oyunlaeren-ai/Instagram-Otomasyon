@@ -45,6 +45,8 @@ describe("official api limitation copy", () => {
       "Instagram'ın resmi API'si takipçi/takip edilen kullanıcı listelerini uygulamaya sağlamıyor."
     );
     expect(nonFollowersPage).toContain("if (!listSupported)");
+    expect(nonFollowersPage).toContain("Takip Ettiklerini Getir");
+    expect(nonFollowersPage).toContain("Takipçilerini Getir");
     expect(nonFollowersPage).not.toContain("Bu liste mevcut API izinleriyle oluşturulamıyor.");
   });
 });

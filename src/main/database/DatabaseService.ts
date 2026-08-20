@@ -15,6 +15,7 @@ import type {
   UserRecord,
   WebAutomationHistory,
   WebAutomationJob,
+  WebCollectedMember,
   WebSessionSnapshot
 } from "@shared/types";
 import type {
@@ -29,6 +30,7 @@ import type {
   RelationshipFilter,
   WebErrorCode,
   WebJobStatus,
+  WebListType,
   WebSessionStatus
 } from "@shared/constants";
 import { WEB_JOB_STATUSES } from "@shared/constants";
@@ -344,6 +346,8 @@ export class DatabaseService {
     this.setFlag("webQueueInterrupted", false);
     this.run("DELETE FROM web_automation_jobs");
     this.run("DELETE FROM web_automation_history");
+    this.run("DELETE FROM web_collected_members");
+    this.run("DELETE FROM web_collected_runs");
     this.run(
       "UPDATE web_automation_sessions SET status = 'disconnected', instagramUsername = NULL, lastCheckedAt = NULL, lastError = NULL, updatedAt = ? WHERE id = 1",
       [nowIso()]
@@ -877,6 +881,70 @@ export class DatabaseService {
       [job.status, job.startedAt, job.completedAt, job.error, nowIso(), job.username]
     );
     this.persist();
+  }
+
+  replaceWebCollectedList(sourceUsername: string, listType: WebListType, usernames: string[]): void {
+    const source = sourceUsername.replace(/^@/, "").toLowerCase();
+    const collectedAt = nowIso();
+    this.run("DELETE FROM web_collected_members WHERE sourceUsername = ? AND listType = ?", [source, listType]);
+    const seen = new Set<string>();
+    for (const raw of usernames) {
+      const username = raw.replace(/^@/, "").trim().toLowerCase();
+      if (!username || seen.has(username)) {
+        continue;
+      }
+      seen.add(username);
+      this.run(
+        "INSERT INTO web_collected_members (sourceUsername, listType, username, collectedAt) VALUES (?, ?, ?, ?)",
+        [source, listType, username, collectedAt]
+      );
+    }
+    this.run(
+      "INSERT INTO web_collected_runs (sourceUsername, listType, memberCount, collectedAt) VALUES (?, ?, ?, ?) ON CONFLICT(sourceUsername, listType) DO UPDATE SET memberCount = excluded.memberCount, collectedAt = excluded.collectedAt",
+      [source, listType, seen.size, collectedAt]
+    );
+    this.persist();
+  }
+
+  getWebCollectedList(sourceUsername: string, listType: WebListType): WebCollectedMember[] {
+    const source = sourceUsername.replace(/^@/, "").toLowerCase();
+    return this.all<Record<string, SqlValue>>(
+      "SELECT * FROM web_collected_members WHERE sourceUsername = ? AND listType = ? ORDER BY username ASC",
+      [source, listType]
+    ).map((row) => this.mapWebCollected(row));
+  }
+
+  getWebNonFollowers(sourceUsername: string): WebCollectedMember[] {
+    const source = sourceUsername.replace(/^@/, "").toLowerCase();
+    return this.all<Record<string, SqlValue>>(
+      `SELECT f.* FROM web_collected_members f
+       WHERE f.sourceUsername = ? AND f.listType = 'FOLLOWING'
+         AND NOT EXISTS (
+           SELECT 1 FROM web_collected_members r
+           WHERE r.sourceUsername = f.sourceUsername AND r.listType = 'FOLLOWERS' AND r.username = f.username
+         )
+       ORDER BY f.username ASC`,
+      [source]
+    ).map((row) => this.mapWebCollected(row));
+  }
+
+  hasBothWebLists(sourceUsername: string): boolean {
+    const source = sourceUsername.replace(/^@/, "").toLowerCase();
+    const row = this.get<{ count: number }>(
+      "SELECT COUNT(*) as count FROM web_collected_runs WHERE sourceUsername = ? AND listType IN ('FOLLOWERS', 'FOLLOWING')",
+      [source]
+    );
+    return (row?.count ?? 0) >= 2;
+  }
+
+  private mapWebCollected(row: Record<string, SqlValue>): WebCollectedMember {
+    return {
+      id: Number(row.id),
+      sourceUsername: String(row.sourceUsername),
+      listType: row.listType === "FOLLOWERS" ? "FOLLOWERS" : "FOLLOWING",
+      username: String(row.username),
+      collectedAt: String(row.collectedAt)
+    };
   }
 
   private ensureWebSession(): void {

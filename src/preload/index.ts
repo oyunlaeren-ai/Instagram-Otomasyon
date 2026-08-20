@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS, type IpcApi } from "@shared/ipc";
-import type { AutomationRuntimeStatus, WebAutomationRuntimeStatus } from "@shared/types";
+import type { AutomationRuntimeStatus, WebAutomationRuntimeStatus, WebListCollectStatus } from "@shared/types";
 
 const api: IpcApi = {
   getDashboardStats: () => ipcRenderer.invoke(IPC_CHANNELS.dashboard.stats),
@@ -59,6 +59,15 @@ const api: IpcApi = {
   getWebAutomationQueue: (action) => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.getQueue, action),
   getWebAutomationHistory: (search, dateRange) =>
     ipcRenderer.invoke(IPC_CHANNELS.webAutomation.getHistory, search, dateRange),
+  getWebListStatus: () => ipcRenderer.invoke(IPC_CHANNELS.webLists.status),
+  collectWebFollowers: (username) => ipcRenderer.invoke(IPC_CHANNELS.webLists.collectFollowers, username),
+  collectWebFollowing: (username) => ipcRenderer.invoke(IPC_CHANNELS.webLists.collectFollowing, username),
+  stopWebListCollect: () => ipcRenderer.invoke(IPC_CHANNELS.webLists.stop),
+  getWebCollectedList: (username, listType) => ipcRenderer.invoke(IPC_CHANNELS.webLists.get, username, listType),
+  getWebNonFollowers: (username) => ipcRenderer.invoke(IPC_CHANNELS.webLists.nonFollowers, username),
+  hasBothWebLists: (username) => ipcRenderer.invoke(IPC_CHANNELS.webLists.hasBoth, username),
+  exportWebListCsv: (username, listType) => ipcRenderer.invoke(IPC_CHANNELS.webLists.exportCsv, username, listType),
+  exportWebListXlsx: (username, listType) => ipcRenderer.invoke(IPC_CHANNELS.webLists.exportXlsx, username, listType),
   onAutomationStatus: (callback) => {
     const listener = (_event: unknown, status: AutomationRuntimeStatus) => callback(status);
     ipcRenderer.on(IPC_CHANNELS.events.automation, listener);
@@ -68,6 +77,11 @@ const api: IpcApi = {
     const listener = (_event: unknown, status: WebAutomationRuntimeStatus) => callback(status);
     ipcRenderer.on(IPC_CHANNELS.events.webAutomation, listener);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.events.webAutomation, listener);
+  },
+  onWebListStatus: (callback) => {
+    const listener = (_event: unknown, status: WebListCollectStatus) => callback(status);
+    ipcRenderer.on(IPC_CHANNELS.events.webLists, listener);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.events.webLists, listener);
   },
   onToast: (callback) => {
     const listener = (_event: unknown, payload: { type: "info" | "success" | "error"; message: string }) =>

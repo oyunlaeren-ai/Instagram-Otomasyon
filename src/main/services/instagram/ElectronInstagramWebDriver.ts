@@ -1,7 +1,12 @@
 import { BrowserWindow, session } from "electron";
-import type { WebSessionStatus } from "@shared/constants";
+import type { WebListType, WebSessionStatus } from "@shared/constants";
 import { createLogger } from "../logging/logger";
-import type { InstagramWebDriver, WebActionOutcome } from "./instagramWebDriver";
+import type {
+  InstagramWebDriver,
+  WebActionOutcome,
+  WebListCollectOptions,
+  WebListCollectResult
+} from "./instagramWebDriver";
 import { WEB_ERROR_MESSAGES } from "./instagramWebDriver";
 
 const log = createLogger("[WebAutomation]");
@@ -66,6 +71,102 @@ export class ElectronInstagramWebDriver implements InstagramWebDriver {
 
   async unfollow(username: string): Promise<WebActionOutcome> {
     return this.runProfileAction(username, "unfollow");
+  }
+
+  async collectRelationshipList(
+    username: string,
+    listType: WebListType,
+    options: WebListCollectOptions
+  ): Promise<WebListCollectResult> {
+    const key = username.replace(/^@/, "").toLowerCase();
+    const profileUrl = `https://www.instagram.com/${encodeURIComponent(key)}/`;
+    const maxUsers = options.maxUsers ?? 5000;
+    const idleRounds = options.idleRounds ?? 4;
+    const scrollDelayMs = options.scrollDelayMs ?? 900;
+    const timeoutMs = options.timeoutMs ?? 180_000;
+    const started = Date.now();
+
+    options.onProgress({ phase: "preparing", collected: 0, message: "Hazırlanıyor..." });
+    const sessionStatus = await this.inspectSession();
+    if (sessionStatus === "disconnected" || sessionStatus === "login_required") {
+      return { ok: false, usernames: [], code: "login_required", message: WEB_ERROR_MESSAGES.login_required };
+    }
+    if (sessionStatus === "expired") {
+      return { ok: false, usernames: [], code: "session_expired", message: WEB_ERROR_MESSAGES.session_expired };
+    }
+    if (sessionStatus === "security_check") {
+      return {
+        ok: false,
+        usernames: [],
+        code: "security_check_required",
+        message: WEB_ERROR_MESSAGES.security_check_required
+      };
+    }
+
+    const window = this.ensureWindow();
+    options.onProgress({ phase: "opening_profile", collected: 0, message: "Profil açılıyor..." });
+    try {
+      await this.load(window, profileUrl);
+    } catch {
+      return { ok: false, usernames: [], code: "profile_unavailable", message: WEB_ERROR_MESSAGES.profile_unavailable };
+    }
+    const inspection = await this.inspectPage(window);
+    const blocked = this.mapInspectionError(inspection, profileUrl);
+    if (blocked && !blocked.ok) {
+      return { ok: false, usernames: [], code: blocked.code, message: blocked.message };
+    }
+    const header = (inspection.headerUsername ?? "").replace(/^@/, "").toLowerCase();
+    if (header && header !== key) {
+      return { ok: false, usernames: [], code: "user_not_found", message: WEB_ERROR_MESSAGES.user_not_found };
+    }
+
+    options.onProgress({ phase: "opening_list", collected: 0, message: "Liste açılıyor..." });
+    const opened = await this.openRelationshipList(window, key, listType);
+    if (!opened) {
+      return { ok: false, usernames: [], code: "list_unavailable", message: WEB_ERROR_MESSAGES.list_unavailable };
+    }
+
+    const unique = new Set<string>();
+    let idle = 0;
+    while (Date.now() - started < timeoutMs && unique.size < maxUsers) {
+      if (options.shouldStop()) {
+        return { ok: false, usernames: [...unique], code: "stopped", message: WEB_ERROR_MESSAGES.stopped };
+      }
+      const page = await this.inspectPage(window);
+      const pageBlocked = this.mapInspectionError(page, profileUrl);
+      if (pageBlocked && !pageBlocked.ok) {
+        return { ok: false, usernames: [...unique], code: pageBlocked.code, message: pageBlocked.message };
+      }
+      const names = await this.readDialogUsernames(window);
+      const before = unique.size;
+      for (const name of names) {
+        unique.add(name);
+      }
+      options.onProgress({
+        phase: "loading_users",
+        collected: unique.size,
+        message: `${unique.size} kullanıcı bulundu.`
+      });
+      if (unique.size === before) {
+        idle += 1;
+        if (idle >= idleRounds) {
+          break;
+        }
+      } else {
+        idle = 0;
+      }
+      await this.scrollListDialog(window);
+      if (scrollDelayMs > 0) {
+        await delay(scrollDelayMs);
+      }
+    }
+
+    options.onProgress({
+      phase: "completed",
+      collected: unique.size,
+      message: "Tamamlandı."
+    });
+    return { ok: true, usernames: [...unique] };
   }
 
   private async runProfileAction(username: string, action: "follow" | "unfollow"): Promise<WebActionOutcome> {
@@ -295,6 +396,101 @@ export class ElectronInstagramWebDriver implements InstagramWebDriver {
       return Boolean(clicked);
     } catch {
       return false;
+    }
+  }
+
+  private async openRelationshipList(
+    window: BrowserWindow,
+    username: string,
+    listType: WebListType
+  ): Promise<boolean> {
+    const part = listType === "FOLLOWING" ? "/following/" : "/followers/";
+    await this.clickHrefContaining(window, part);
+    await delay(800);
+    if (await this.dialogIsOpen(window)) {
+      return true;
+    }
+    try {
+      await this.load(window, `https://www.instagram.com/${encodeURIComponent(username)}${part}`);
+    } catch {
+      return false;
+    }
+    await delay(800);
+    return this.dialogIsOpen(window);
+  }
+
+  private async clickHrefContaining(window: BrowserWindow, part: string): Promise<boolean> {
+    try {
+      return Boolean(
+        await window.webContents.executeJavaScript(`
+          (() => {
+            const part = ${JSON.stringify(part)};
+            const links = [...document.querySelectorAll("a[href]")];
+            const match = links.find((a) => {
+              const href = a.getAttribute("href") || "";
+              return href.includes(part) && !href.includes("/accounts/");
+            });
+            if (!match) return false;
+            match.click();
+            return true;
+          })()
+        `)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private async dialogIsOpen(window: BrowserWindow): Promise<boolean> {
+    try {
+      return Boolean(
+        await window.webContents.executeJavaScript(`Boolean(document.querySelector('div[role="dialog"]'))`)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private async readDialogUsernames(window: BrowserWindow): Promise<string[]> {
+    try {
+      const names = (await window.webContents.executeJavaScript(`
+        (() => {
+          const dialog = document.querySelector('div[role="dialog"]');
+          if (!dialog) return [];
+          const skip = new Set(["accounts","p","reel","reels","stories","explore","direct","legal","about"]);
+          const found = [];
+          for (const link of dialog.querySelectorAll("a[href]")) {
+            const href = link.getAttribute("href") || "";
+            const match = href.match(/^\\/([A-Za-z0-9._]{1,30})\\/?$/);
+            if (!match) continue;
+            const username = match[1].toLowerCase();
+            if (skip.has(username)) continue;
+            found.push(username);
+          }
+          return found;
+        })()
+      `)) as string[];
+      return Array.isArray(names) ? names : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async scrollListDialog(window: BrowserWindow): Promise<void> {
+    try {
+      await window.webContents.executeJavaScript(`
+        (() => {
+          const dialog = document.querySelector('div[role="dialog"]');
+          if (!dialog) return false;
+          const nodes = [dialog, ...dialog.querySelectorAll("div")];
+          const scroller = nodes.find((el) => el.scrollHeight > el.clientHeight + 20);
+          if (!scroller) return false;
+          scroller.scrollTop = scroller.scrollHeight;
+          return true;
+        })()
+      `);
+    } catch {
+      return;
     }
   }
 }

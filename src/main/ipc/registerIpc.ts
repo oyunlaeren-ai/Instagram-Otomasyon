@@ -1,7 +1,7 @@
 import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import fs from "node:fs";
 import { IPC_CHANNELS } from "@shared/ipc";
-import type { ActionType, HistoryDateRange } from "@shared/constants";
+import type { ActionType, HistoryDateRange, WebListType } from "@shared/constants";
 import { parseCsvUsernames, sanitizeUsername, toCsv, toUserMessage } from "@shared/utils";
 import { InstagramServiceError } from "@shared/errors";
 import type { DatabaseService } from "../database/DatabaseService";
@@ -11,6 +11,8 @@ import type { InstagramAuthService } from "../services/instagram/InstagramAuthSe
 import type { InstagramService } from "../services/instagram/InstagramService";
 import type { WebInstagramAutomationService } from "../services/instagram/WebInstagramAutomationService";
 import type { WebAutomationEngine } from "../services/automation/WebAutomationEngine";
+import type { WebListCollector } from "../services/instagram/WebListCollector";
+import { toXlsxBase64 } from "@shared/xlsx";
 
 export interface IpcContext {
   database: DatabaseService;
@@ -22,6 +24,7 @@ export interface IpcContext {
   reinitializeDatabase: () => Promise<void>;
   webAutomation: WebInstagramAutomationService;
   webEngine: WebAutomationEngine;
+  webLists: WebListCollector;
 }
 
 function wrap<T>(fn: () => Promise<T> | T): Promise<T> {
@@ -52,8 +55,18 @@ function cleanUsernames(values: unknown): string[] {
   return [...unique];
 }
 
+function resolveWebExportNames(database: DatabaseService, username: unknown, listType: unknown): string[] {
+  const source = typeof username === "string" ? username : "";
+  if (listType === "NONFOLLOWERS") {
+    return database.getWebNonFollowers(source).map((item) => item.username);
+  }
+  return database
+    .getWebCollectedList(source, listType === "FOLLOWERS" ? "FOLLOWERS" : "FOLLOWING")
+    .map((item) => item.username);
+}
+
 export function registerIpc(context: IpcContext): void {
-  const { database, automation, queue, auth, getService, getWindow, reinitializeDatabase, webAutomation, webEngine } =
+  const { database, automation, queue, auth, getService, getWindow, reinitializeDatabase, webAutomation, webEngine, webLists } =
     context;
 
   ipcMain.handle(IPC_CHANNELS.dashboard.stats, () =>
@@ -239,6 +252,7 @@ export function registerIpc(context: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.data.reset, () =>
     wrap(async () => {
       await webEngine.stop();
+      webLists.stop();
       await webAutomation.logout();
       database.resetUserData();
     })
@@ -288,5 +302,34 @@ export function registerIpc(context: IpcContext): void {
   );
   ipcMain.handle(IPC_CHANNELS.webAutomation.getHistory, (_event, search: unknown, dateRange: HistoryDateRange) =>
     wrap(() => database.getWebHistory(typeof search === "string" ? search : "", dateRange ?? "all"))
+  );
+
+  ipcMain.handle(IPC_CHANNELS.webLists.status, () => wrap(() => webLists.getStatus()));
+  ipcMain.handle(IPC_CHANNELS.webLists.collectFollowers, (_event, username: unknown) =>
+    wrap(() => webLists.collectFollowers(typeof username === "string" ? username : ""))
+  );
+  ipcMain.handle(IPC_CHANNELS.webLists.collectFollowing, (_event, username: unknown) =>
+    wrap(() => webLists.collectFollowing(typeof username === "string" ? username : ""))
+  );
+  ipcMain.handle(IPC_CHANNELS.webLists.stop, () => wrap(() => webLists.stop()));
+  ipcMain.handle(IPC_CHANNELS.webLists.get, (_event, username: unknown, listType: WebListType) =>
+    wrap(() =>
+      database.getWebCollectedList(
+        typeof username === "string" ? username : "",
+        listType === "FOLLOWERS" ? "FOLLOWERS" : "FOLLOWING"
+      )
+    )
+  );
+  ipcMain.handle(IPC_CHANNELS.webLists.nonFollowers, (_event, username: unknown) =>
+    wrap(() => database.getWebNonFollowers(typeof username === "string" ? username : ""))
+  );
+  ipcMain.handle(IPC_CHANNELS.webLists.hasBoth, (_event, username: unknown) =>
+    wrap(() => database.hasBothWebLists(typeof username === "string" ? username : ""))
+  );
+  ipcMain.handle(IPC_CHANNELS.webLists.exportCsv, (_event, username: unknown, listType: unknown) =>
+    wrap(() => toCsv(resolveWebExportNames(database, username, listType)))
+  );
+  ipcMain.handle(IPC_CHANNELS.webLists.exportXlsx, (_event, username: unknown, listType: unknown) =>
+    wrap(() => toXlsxBase64(resolveWebExportNames(database, username, listType)))
   );
 }

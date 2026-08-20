@@ -13,6 +13,7 @@ import type {
   UnfollowFilter,
   WebErrorCode,
   WebJobStatus,
+  WebListType,
   WebSessionStatus
 } from "./constants";
 
@@ -248,6 +249,25 @@ export interface WebAutomationRuntimeStatus {
   interrupted: boolean;
 }
 
+export interface WebCollectedMember {
+  id: number;
+  sourceUsername: string;
+  listType: WebListType;
+  username: string;
+  collectedAt: string;
+}
+
+export interface WebListCollectStatus {
+  running: boolean;
+  sourceUsername: string | null;
+  listType: WebListType | null;
+  phase: string;
+  collected: number;
+  total: number;
+  message: string;
+  lastError: string | null;
+}
+
 export type {
   ActionType,
   ConnectionStatus,
@@ -263,5 +283,6 @@ export type {
   UnfollowFilter,
   WebErrorCode,
   WebJobStatus,
+  WebListType,
   WebSessionStatus
 };

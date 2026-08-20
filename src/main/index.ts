@@ -16,6 +16,7 @@ import { InstagramAuthService } from "./services/instagram/InstagramAuthService"
 import { closeOAuthCallbackListener } from "./services/instagram/OAuthCallbackServer";
 import { ElectronInstagramWebDriver } from "./services/instagram/ElectronInstagramWebDriver";
 import { WebInstagramAutomationService } from "./services/instagram/WebInstagramAutomationService";
+import { WebListCollector } from "./services/instagram/WebListCollector";
 import { EncryptedFileTokenStore } from "./services/security/TokenStore";
 import { RotatingFileLogger } from "./services/logging/FileLogger";
 import { IPC_CHANNELS } from "@shared/ipc";
@@ -151,6 +152,13 @@ app.whenReady().then(async () => {
     notify
   );
 
+  const webLists = new WebListCollector(
+    database,
+    webAutomation,
+    () => webEngine.getStatus().running,
+    () => 800
+  );
+
   let mainWindow: BrowserWindow | null = createWindow();
 
   registerIpc({
@@ -164,7 +172,8 @@ app.whenReady().then(async () => {
       await database.initialize();
     },
     webAutomation,
-    webEngine
+    webEngine,
+    webLists
   });
 
   automation.onStatus((status) => {
@@ -172,6 +181,9 @@ app.whenReady().then(async () => {
   });
   webEngine.onStatus((status) => {
     mainWindow?.webContents.send(IPC_CHANNELS.events.webAutomation, status);
+  });
+  webLists.onStatus((status) => {
+    mainWindow?.webContents.send(IPC_CHANNELS.events.webLists, status);
   });
 
   app.on("activate", () => {
@@ -187,6 +199,7 @@ app.whenReady().then(async () => {
     shutdownListener();
     void automation.stop();
     void webEngine.stop();
+    webLists.stop();
     database.close();
   });
   app.on("will-quit", shutdownListener);

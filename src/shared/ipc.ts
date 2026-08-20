@@ -18,9 +18,11 @@ import type {
   WebAutomationHistory,
   WebAutomationJob,
   WebAutomationRuntimeStatus,
+  WebCollectedMember,
+  WebListCollectStatus,
   WebSessionSnapshot
 } from "./types";
-import type { ActionType, ListType } from "./constants";
+import type { ActionType, ListType, WebListType } from "./constants";
 
 export const IPC_CHANNELS = {
   dashboard: { stats: "dashboard:stats", recent: "dashboard:recent" },
@@ -84,7 +86,18 @@ export const IPC_CHANNELS = {
     getQueue: "webAutomation:getQueue",
     getHistory: "webAutomation:getHistory"
   },
-  events: { automation: "event:automation", toast: "event:toast", webAutomation: "event:webAutomation" }
+  webLists: {
+    status: "webLists:status",
+    collectFollowers: "webLists:collectFollowers",
+    collectFollowing: "webLists:collectFollowing",
+    stop: "webLists:stop",
+    get: "webLists:get",
+    nonFollowers: "webLists:nonFollowers",
+    hasBoth: "webLists:hasBoth",
+    exportCsv: "webLists:exportCsv",
+    exportXlsx: "webLists:exportXlsx"
+  },
+  events: { automation: "event:automation", toast: "event:toast", webAutomation: "event:webAutomation", webLists: "event:webLists" }
 } as const;
 
 export const IPC_CHANNEL_LIST = Object.values(IPC_CHANNELS).flatMap((group) => Object.values(group));
@@ -153,7 +166,17 @@ export interface IpcApi {
   stopWebAutomation: () => Promise<WebAutomationRuntimeStatus>;
   getWebAutomationQueue: (action: ActionType) => Promise<WebAutomationJob[]>;
   getWebAutomationHistory: (search?: string, dateRange?: HistoryDateRange) => Promise<WebAutomationHistory[]>;
+  getWebListStatus: () => Promise<WebListCollectStatus>;
+  collectWebFollowers: (username: string) => Promise<WebListCollectStatus>;
+  collectWebFollowing: (username: string) => Promise<WebListCollectStatus>;
+  stopWebListCollect: () => Promise<WebListCollectStatus>;
+  getWebCollectedList: (username: string, listType: WebListType) => Promise<WebCollectedMember[]>;
+  getWebNonFollowers: (username: string) => Promise<WebCollectedMember[]>;
+  hasBothWebLists: (username: string) => Promise<boolean>;
+  exportWebListCsv: (username: string, listType: "FOLLOWERS" | "FOLLOWING" | "NONFOLLOWERS") => Promise<string>;
+  exportWebListXlsx: (username: string, listType: "FOLLOWERS" | "FOLLOWING" | "NONFOLLOWERS") => Promise<string>;
   onAutomationStatus: (callback: (status: AutomationRuntimeStatus) => void) => () => void;
   onWebAutomationStatus: (callback: (status: WebAutomationRuntimeStatus) => void) => () => void;
+  onWebListStatus: (callback: (status: WebListCollectStatus) => void) => () => void;
   onToast: (callback: (payload: { type: "info" | "success" | "error"; message: string }) => void) => () => void;
 }

@@ -117,6 +117,10 @@ export const WEB_ERROR_CODES = [
   "captcha_required",
   "temporary_error",
   "failed",
-  "stopped"
+  "stopped",
+  "list_unavailable"
 ] as const;
 export type WebErrorCode = (typeof WEB_ERROR_CODES)[number];
+
+export const WEB_LIST_TYPES = ["FOLLOWERS", "FOLLOWING"] as const;
+export type WebListType = (typeof WEB_LIST_TYPES)[number];
