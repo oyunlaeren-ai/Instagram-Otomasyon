@@ -342,6 +342,11 @@ tr:hover td {
   background: rgba(76, 201, 240, 0.12);
 }
 
+.badge.unsupported {
+  color: var(--muted);
+  background: rgba(148, 163, 184, 0.16);
+}
+
 .state {
   padding: 42px 20px;
   text-align: center;

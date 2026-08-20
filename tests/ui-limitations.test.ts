@@ -18,6 +18,14 @@ describe("official api limitation copy", () => {
     expect(followPage).toMatch(/if \(!connection\.followSupported\) \{\s*return;/);
   });
 
+  it("shows follow queue rows as unsupported instead of waiting when follow is not supported", () => {
+    expect(followPage).toContain('<span className="badge unsupported">API desteklemiyor</span>');
+    expect(followPage).toMatch(
+      /connection\.followSupported[\s\S]*\?[\s\S]*item\.lastActionAt[\s\S]*Instagram'ın resmi API'si başka hesapları takip etmeyi desteklemiyor\./
+    );
+    expect(followPage).toContain("disabled={!connection.followSupported}");
+  });
+
   it("disables unfollow actions and explains the Meta API limit", () => {
     expect(unfollowPage).toContain("disabled={!connection.unfollowSupported}");
     expect(unfollowPage).toContain("Instagram'ın resmi API'si başka hesapları takipten çıkarmayı desteklemiyor.");

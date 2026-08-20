@@ -162,10 +162,24 @@ export function FollowPage() {
                     </td>
                     <td>@{item.username}</td>
                     <td>
-                      <StatusBadge status={item.status} />
+                      {connection.followSupported ? (
+                        <StatusBadge status={item.status} />
+                      ) : (
+                        <span className="badge unsupported">API desteklemiyor</span>
+                      )}
                     </td>
-                    <td>{item.lastActionAt ? formatDateTime(item.lastActionAt) : "—"}</td>
-                    <td>{item.error ?? "—"}</td>
+                    <td>
+                      {connection.followSupported
+                        ? item.lastActionAt
+                          ? formatDateTime(item.lastActionAt)
+                          : "—"
+                        : "Instagram'ın resmi API'si başka hesapları takip etmeyi desteklemiyor."}
+                    </td>
+                    <td>
+                      {connection.followSupported
+                        ? (item.error ?? "—")
+                        : "Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz."}
+                    </td>
                   </tr>
                 ))}
               </tbody>
