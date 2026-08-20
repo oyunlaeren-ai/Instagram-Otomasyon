@@ -103,5 +103,50 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE automation_jobs ADD COLUMN duration INTEGER;
       ALTER TABLE automation_logs ADD COLUMN duration INTEGER;
     `
+  },
+  {
+    name: "003_web_automation",
+    sql: `
+      CREATE TABLE IF NOT EXISTS web_automation_sessions (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        status TEXT NOT NULL DEFAULT 'disconnected',
+        instagramUsername TEXT,
+        lastCheckedAt TEXT,
+        lastError TEXT,
+        updatedAt TEXT NOT NULL
+      );
+
+      INSERT INTO web_automation_sessions (id, status, instagramUsername, lastCheckedAt, lastError, updatedAt)
+      VALUES (1, 'disconnected', NULL, NULL, NULL, datetime('now'));
+
+      CREATE TABLE IF NOT EXISTS web_automation_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        action TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'web',
+        status TEXT NOT NULL DEFAULT 'pending',
+        profileUrl TEXT,
+        error TEXT,
+        errorCode TEXT,
+        createdAt TEXT NOT NULL,
+        startedAt TEXT,
+        completedAt TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS web_automation_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        jobId INTEGER,
+        username TEXT NOT NULL,
+        action TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'web',
+        status TEXT NOT NULL,
+        error TEXT,
+        errorCode TEXT,
+        profileUrl TEXT,
+        startedAt TEXT,
+        completedAt TEXT,
+        createdAt TEXT NOT NULL
+      );
+    `
   }
 ];

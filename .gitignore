@@ -11,5 +11,8 @@ coverage/
 *.sqlite
 *.sqlite-journal
 userData/
+Partitions/
+**/Cookies
+**/Cookies-journal
 
 cloudflared.exe*

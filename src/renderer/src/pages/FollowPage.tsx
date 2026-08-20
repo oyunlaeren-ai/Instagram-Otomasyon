@@ -1,25 +1,44 @@
 import { useEffect, useState } from "react";
-import type { QueueItem } from "@shared/types";
+import type { QueueItem, WebAutomationJob } from "@shared/types";
 import { formatDateTime } from "@shared/utils";
 import { EmptyState, StatusBadge } from "../components/Ui";
+import { WebSessionPanel } from "../components/WebSessionPanel";
 import { useAppStore } from "../stores/appStore";
+
+function rowStatus(item: QueueItem, jobs: WebAutomationJob[], running: boolean): string {
+  const job = [...jobs].reverse().find((entry) => entry.username === item.username);
+  if (job) {
+    return job.status;
+  }
+  if (item.status === "pending" && running) {
+    return "pending";
+  }
+  return "listed";
+}
 
 export function FollowPage() {
   const connection = useAppStore((state) => state.connection);
+  const webAutomation = useAppStore((state) => state.webAutomation);
   const refresh = useAppStore((state) => state.refresh);
   const pushToast = useAppStore((state) => state.pushToast);
   const [items, setItems] = useState<QueueItem[]>([]);
+  const [jobs, setJobs] = useState<WebAutomationJob[]>([]);
   const [draft, setDraft] = useState("");
   const [selected, setSelected] = useState<number[]>([]);
   const [search, setSearch] = useState("");
 
   async function load() {
-    setItems(await window.api.getFollowQueue());
+    const [queue, webJobs] = await Promise.all([
+      window.api.getFollowQueue(),
+      window.api.getWebAutomationQueue("FOLLOW")
+    ]);
+    setItems(queue);
+    setJobs(webJobs);
   }
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [webAutomation.processed, webAutomation.pending, webAutomation.running]);
 
   async function add() {
     const usernames = draft
@@ -51,6 +70,15 @@ export function FollowPage() {
     await load();
   }
 
+  async function startWeb() {
+    const usernames = (selected.length ? items.filter((item) => selected.includes(item.id)) : items).map(
+      (item) => item.username
+    );
+    await window.api.startWebFollow(usernames);
+    await refresh();
+    await load();
+  }
+
   return (
     <section className="page">
       <div className="page-header">
@@ -59,13 +87,68 @@ export function FollowPage() {
           <p>Kullanıcı listesini yönetin ve takip kuyruğunu çalıştırın.</p>
         </div>
       </div>
+      <div className="grid two-col">
+        <article className="card">
+          <div className="card-body">
+            <h3>Instagram API</h3>
+            <p>
+              <span
+                className="status-dot"
+                style={{ background: connection.connected ? "var(--success)" : "var(--danger)" }}
+              />
+              {connection.connected ? "Hesap bağlı" : "Hesap bağlı değil"}
+            </p>
+            <div className="hint">
+              <p>Instagram'ın resmi API'si başka hesapları takip etmeyi desteklemiyor.</p>
+              <p>Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz.</p>
+              <p>
+                Resmi Instagram API takip işlemini desteklemiyor. Bu işlem Web Otomasyonu ile Instagram web
+                arayüzünde gerçekleştirilir.
+              </p>
+            </div>
+          </div>
+        </article>
+        <article className="card">
+          <div className="card-body">
+            <h3>Instagram Web Otomasyonu</h3>
+            <WebSessionPanel session={webAutomation.session} />
+            <p className="hint">
+              Resmi Instagram API takip işlemini desteklemiyor. Bu işlem Web Otomasyonu ile Instagram web arayüzünde
+              gerçekleştirilir.
+            </p>
+            <div className="toolbar">
+              <button className="btn success" disabled={!webAutomation.session.connected} onClick={() => void startWeb()}>
+                Web Otomasyonunu Başlat
+              </button>
+              <button className="btn" disabled={!webAutomation.running} onClick={() => void window.api.pauseWebAutomation()}>
+                Duraklat
+              </button>
+              <button
+                className="btn"
+                disabled={!webAutomation.paused && !webAutomation.interrupted}
+                onClick={() => void window.api.resumeWebAutomation()}
+              >
+                Devam Et
+              </button>
+              <button className="btn danger" onClick={() => void window.api.stopWebAutomation()}>
+                Durdur
+              </button>
+            </div>
+            {webAutomation.lastError ? <p className="hint">{webAutomation.lastError}</p> : null}
+            <p>
+              Toplam: {webAutomation.total} · Başarılı: {webAutomation.success} · Zaten takip:{" "}
+              {webAutomation.alreadyFollowing} · Bekleyen: {webAutomation.pending} · Başarısız: {webAutomation.failed}
+            </p>
+          </div>
+        </article>
+      </div>
       {!connection.followSupported ? (
         <div className="hint">
           <p>Instagram'ın resmi API'si başka hesapları takip etmeyi desteklemiyor.</p>
           <p>Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz.</p>
         </div>
       ) : null}
-      <article className="card">
+      <article className="card" style={{ marginTop: 16 }}>
         <div className="card-body">
           <textarea
             className="textarea"
@@ -147,7 +230,9 @@ export function FollowPage() {
               <tbody>
                 {items
                   .filter((item) => item.username.toLowerCase().includes(search.toLowerCase()))
-                  .map((item) => (
+                  .map((item) => {
+                    const status = rowStatus(item, jobs, webAutomation.running);
+                    return (
                   <tr key={item.id}>
                     <td>
                       <input
@@ -162,10 +247,10 @@ export function FollowPage() {
                     </td>
                     <td>@{item.username}</td>
                     <td>
-                      {connection.followSupported ? (
-                        <StatusBadge status={item.status} />
+                      {status === "listed" ? (
+                        <span className="badge">Listede</span>
                       ) : (
-                        <span className="badge unsupported">API desteklemiyor</span>
+                        <StatusBadge status={status} />
                       )}
                     </td>
                     <td>
@@ -181,7 +266,8 @@ export function FollowPage() {
                         : "Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz."}
                     </td>
                   </tr>
-                ))}
+                    );
+                  })}
               </tbody>
             </table>
           )}

@@ -14,7 +14,11 @@ import type {
   QueueItem,
   RelationshipFilter,
   UnfollowFilter,
-  UserRecord
+  UserRecord,
+  WebAutomationHistory,
+  WebAutomationJob,
+  WebAutomationRuntimeStatus,
+  WebSessionSnapshot
 } from "./types";
 import type { ActionType, ListType } from "./constants";
 
@@ -66,7 +70,21 @@ export const IPC_CHANNELS = {
   data: { backup: "data:backup", restore: "data:restore", reset: "data:reset" },
   app: { version: "app:version", capabilities: "app:capabilities" },
   media: { list: "media:list" },
-  events: { automation: "event:automation", toast: "event:toast" }
+  webAutomation: {
+    status: "webAutomation:status",
+    login: "webAutomation:login",
+    logout: "webAutomation:logout",
+    checkSession: "webAutomation:checkSession",
+    startFollow: "webAutomation:startFollow",
+    startUnfollow: "webAutomation:startUnfollow",
+    pause: "webAutomation:pause",
+    resume: "webAutomation:resume",
+    restart: "webAutomation:restart",
+    stop: "webAutomation:stop",
+    getQueue: "webAutomation:getQueue",
+    getHistory: "webAutomation:getHistory"
+  },
+  events: { automation: "event:automation", toast: "event:toast", webAutomation: "event:webAutomation" }
 } as const;
 
 export const IPC_CHANNEL_LIST = Object.values(IPC_CHANNELS).flatMap((group) => Object.values(group));
@@ -123,6 +141,19 @@ export interface IpcApi {
   getAppVersion: () => Promise<string>;
   getCapabilities: () => Promise<InstagramCapabilities>;
   getMedia: () => Promise<InstagramMediaItem[]>;
+  getWebAutomationStatus: () => Promise<WebAutomationRuntimeStatus>;
+  loginWebAutomation: () => Promise<WebSessionSnapshot>;
+  logoutWebAutomation: () => Promise<WebSessionSnapshot>;
+  checkWebAutomationSession: () => Promise<WebSessionSnapshot>;
+  startWebFollow: (usernames: string[]) => Promise<WebAutomationRuntimeStatus>;
+  startWebUnfollow: (usernames: string[]) => Promise<WebAutomationRuntimeStatus>;
+  pauseWebAutomation: () => Promise<WebAutomationRuntimeStatus>;
+  resumeWebAutomation: () => Promise<WebAutomationRuntimeStatus>;
+  restartWebAutomation: () => Promise<WebAutomationRuntimeStatus>;
+  stopWebAutomation: () => Promise<WebAutomationRuntimeStatus>;
+  getWebAutomationQueue: (action: ActionType) => Promise<WebAutomationJob[]>;
+  getWebAutomationHistory: (search?: string, dateRange?: HistoryDateRange) => Promise<WebAutomationHistory[]>;
   onAutomationStatus: (callback: (status: AutomationRuntimeStatus) => void) => () => void;
+  onWebAutomationStatus: (callback: (status: WebAutomationRuntimeStatus) => void) => () => void;
   onToast: (callback: (payload: { type: "info" | "success" | "error"; message: string }) => void) => () => void;
 }

@@ -18,6 +18,7 @@ export default function App() {
   const settings = useAppStore((state) => state.settings);
   const setSettings = useAppStore((state) => state.setSettings);
   const automation = useAppStore((state) => state.automation);
+  const webAutomation = useAppStore((state) => state.webAutomation);
   const refresh = useAppStore((state) => state.refresh);
   const [step, setStep] = useState(0);
 
@@ -82,6 +83,40 @@ export default function App() {
                 Başla
               </button>
             )}
+          </div>
+        </Modal>
+      ) : null}
+      {settings.onboardingCompleted && webAutomation.interrupted && !webAutomation.running ? (
+        <Modal title="Önceki otomasyon yarım kaldı." onClose={() => undefined}>
+          <p>Uygulama kapanmadan önce tamamlanmamış web otomasyon işleri vardı. Otomasyon kendiliğinden başlamaz.</p>
+          <div className="toolbar">
+            <button
+              className="btn success"
+              onClick={async () => {
+                await window.api.resumeWebAutomation();
+                await refresh();
+              }}
+            >
+              Devam Et
+            </button>
+            <button
+              className="btn"
+              onClick={async () => {
+                await window.api.restartWebAutomation();
+                await refresh();
+              }}
+            >
+              Baştan Başlat
+            </button>
+            <button
+              className="btn danger"
+              onClick={async () => {
+                await window.api.stopWebAutomation();
+                await refresh();
+              }}
+            >
+              Durdur
+            </button>
           </div>
         </Modal>
       ) : null}

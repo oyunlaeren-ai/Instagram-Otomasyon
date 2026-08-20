@@ -19,10 +19,16 @@ export function StatusBadge({ status }: { status: string }) {
     processing: "İşleniyor",
     success: "Başarılı",
     failed: "Başarısız",
-    cancelled: "İptal",
+    cancelled: "İptal edildi",
     unsupported: "Desteklenmiyor",
     connected: "Bağlı",
-    disconnected: "Bağlı Değil"
+    disconnected: "Bağlı Değil",
+    already_following: "Zaten takip ediliyor",
+    already_unfollowed: "Zaten takip edilmiyor",
+    paused: "Duraklatıldı",
+    login_required: "Giriş gerekiyor",
+    security_check_required: "Güvenlik doğrulaması gerekiyor",
+    user_not_found: "Kullanıcı bulunamadı"
   };
   return <span className={`badge ${normalized}`}>{labelMap[normalized] ?? status}</span>;
 }

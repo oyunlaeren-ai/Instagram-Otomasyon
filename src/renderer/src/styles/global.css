@@ -347,6 +347,34 @@ tr:hover td {
   background: rgba(148, 163, 184, 0.16);
 }
 
+.badge.already_following,
+.badge.already_unfollowed {
+  color: var(--accent-2);
+  background: rgba(76, 201, 240, 0.12);
+}
+
+.badge.paused,
+.badge.login_required {
+  color: var(--warning);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.badge.security_check_required,
+.badge.user_not_found,
+.badge.cancelled {
+  color: var(--danger);
+  background: rgba(251, 113, 133, 0.12);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
 .state {
   padding: 42px 20px;
   text-align: center;

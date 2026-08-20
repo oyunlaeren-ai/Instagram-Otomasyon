@@ -12,7 +12,10 @@ import type {
   ListMember,
   ListRecord,
   QueueItem,
-  UserRecord
+  UserRecord,
+  WebAutomationHistory,
+  WebAutomationJob,
+  WebSessionSnapshot
 } from "@shared/types";
 import type {
   ActionType,
@@ -23,8 +26,12 @@ import type {
   InstagramProvider,
   JobStatus,
   ListType,
-  RelationshipFilter
+  RelationshipFilter,
+  WebErrorCode,
+  WebJobStatus,
+  WebSessionStatus
 } from "@shared/constants";
+import { WEB_JOB_STATUSES } from "@shared/constants";
 
 const log = createLogger("[Database]");
 
@@ -79,6 +86,7 @@ export class DatabaseService {
     this.ensureDefaultSettings();
     this.ensureDefaultLists();
     this.removeDemoAccounts();
+    this.ensureWebSession();
     this.persist();
   }
 
@@ -333,6 +341,13 @@ export class DatabaseService {
     this.run("DELETE FROM users");
     this.run("DELETE FROM accounts");
     this.setFlag("queueInterrupted", false);
+    this.setFlag("webQueueInterrupted", false);
+    this.run("DELETE FROM web_automation_jobs");
+    this.run("DELETE FROM web_automation_history");
+    this.run(
+      "UPDATE web_automation_sessions SET status = 'disconnected', instagramUsername = NULL, lastCheckedAt = NULL, lastError = NULL, updatedAt = ? WHERE id = 1",
+      [nowIso()]
+    );
     this.persist();
   }
 
@@ -611,6 +626,314 @@ export class DatabaseService {
     this.run("DELETE FROM list_members WHERE id = ? AND listId = ?", [memberId, listId]);
     this.persist();
     return this.getListMembers(listId);
+  }
+
+  getWebSession(): {
+    status: WebSessionStatus;
+    instagramUsername: string | null;
+    lastCheckedAt: string | null;
+    lastError: string | null;
+  } {
+    this.ensureWebSession();
+    const row = this.get<Record<string, SqlValue>>("SELECT * FROM web_automation_sessions WHERE id = 1");
+    return {
+      status: this.mapWebSessionStatus(row?.status),
+      instagramUsername: row?.instagramUsername ? String(row.instagramUsername) : null,
+      lastCheckedAt: row?.lastCheckedAt ? String(row.lastCheckedAt) : null,
+      lastError: row?.lastError ? String(row.lastError) : null
+    };
+  }
+
+  getWebSessionSnapshot(): WebSessionSnapshot {
+    const stored = this.getWebSession();
+    const messages: Record<WebSessionStatus, string> = {
+      disconnected: "Bağlı değil",
+      login_required: "Giriş bekleniyor",
+      connected: "Bağlı",
+      expired: "Oturum süresi doldu",
+      security_check: "Güvenlik doğrulaması gerekiyor"
+    };
+    return {
+      status: stored.status,
+      connected: stored.status === "connected",
+      instagramUsername: stored.instagramUsername,
+      lastCheckedAt: stored.lastCheckedAt,
+      lastError: stored.lastError,
+      message: messages[stored.status]
+    };
+  }
+
+  setWebSession(patch: {
+    status: WebSessionStatus;
+    instagramUsername?: string | null;
+    lastCheckedAt?: string | null;
+    lastError?: string | null;
+  }): void {
+    this.ensureWebSession();
+    const current = this.getWebSession();
+    this.run(
+      "UPDATE web_automation_sessions SET status = ?, instagramUsername = ?, lastCheckedAt = ?, lastError = ?, updatedAt = ? WHERE id = 1",
+      [
+        patch.status,
+        patch.instagramUsername === undefined ? current.instagramUsername : patch.instagramUsername,
+        patch.lastCheckedAt === undefined ? current.lastCheckedAt : patch.lastCheckedAt,
+        patch.lastError === undefined ? current.lastError : patch.lastError,
+        nowIso()
+      ]
+    );
+    this.persist();
+  }
+
+  createWebJobs(usernames: string[], action: ActionType): WebAutomationJob[] {
+    const timestamp = nowIso();
+    for (const raw of usernames) {
+      const username = raw.replace(/^@/, "").trim().toLowerCase();
+      if (!username) {
+        continue;
+      }
+      const existing = this.get<{ id: number }>(
+        "SELECT id FROM web_automation_jobs WHERE username = ? AND action = ? AND status IN ('pending', 'processing', 'paused')",
+        [username, action]
+      );
+      if (existing) {
+        continue;
+      }
+      this.run(
+        "INSERT INTO web_automation_jobs (username, action, provider, status, createdAt) VALUES (?, ?, 'web', 'pending', ?)",
+        [username, action, timestamp]
+      );
+    }
+    this.persist();
+    return this.getWebJobs(action);
+  }
+
+  getWebJobs(action?: ActionType): WebAutomationJob[] {
+    if (action) {
+      return this.all<Record<string, SqlValue>>(
+        "SELECT * FROM web_automation_jobs WHERE action = ? ORDER BY id ASC",
+        [action]
+      ).map((row) => this.mapWebJob(row));
+    }
+    return this.all<Record<string, SqlValue>>("SELECT * FROM web_automation_jobs ORDER BY id ASC").map((row) =>
+      this.mapWebJob(row)
+    );
+  }
+
+  getWebPendingJobs(action?: ActionType): WebAutomationJob[] {
+    if (action) {
+      return this.all<Record<string, SqlValue>>(
+        "SELECT * FROM web_automation_jobs WHERE status = 'pending' AND action = ? ORDER BY id ASC",
+        [action]
+      ).map((row) => this.mapWebJob(row));
+    }
+    return this.all<Record<string, SqlValue>>(
+      "SELECT * FROM web_automation_jobs WHERE status = 'pending' ORDER BY id ASC"
+    ).map((row) => this.mapWebJob(row));
+  }
+
+  getWebJob(id: number): WebAutomationJob | null {
+    const row = this.get<Record<string, SqlValue>>("SELECT * FROM web_automation_jobs WHERE id = ?", [id]);
+    return row ? this.mapWebJob(row) : null;
+  }
+
+  updateWebJob(
+    id: number,
+    patch: Partial<Pick<WebAutomationJob, "status" | "startedAt" | "completedAt" | "error" | "errorCode" | "profileUrl">>
+  ): WebAutomationJob {
+    const current = this.getWebJob(id);
+    if (!current) {
+      throw new Error(`Web job ${id} not found`);
+    }
+    const next = { ...current, ...patch };
+    this.run(
+      "UPDATE web_automation_jobs SET status = ?, startedAt = ?, completedAt = ?, error = ?, errorCode = ?, profileUrl = ? WHERE id = ?",
+      [next.status, next.startedAt, next.completedAt, next.error, next.errorCode, next.profileUrl, id]
+    );
+    this.persist();
+    const updated = this.getWebJob(id);
+    if (!updated) {
+      throw new Error("Web job update failed");
+    }
+    return updated;
+  }
+
+  pauseWebProcessingJobs(): void {
+    this.run("UPDATE web_automation_jobs SET status = 'paused' WHERE status = 'processing'");
+    this.persist();
+  }
+
+  cancelWebPendingJobs(action?: ActionType): void {
+    if (action) {
+      this.run(
+        "UPDATE web_automation_jobs SET status = 'cancelled', completedAt = ? WHERE status IN ('pending', 'paused') AND action = ?",
+        [nowIso(), action]
+      );
+    } else {
+      this.run(
+        "UPDATE web_automation_jobs SET status = 'cancelled', completedAt = ? WHERE status IN ('pending', 'paused')",
+        [nowIso()]
+      );
+    }
+    this.persist();
+  }
+
+  resetUnfinishedWebJobs(action: ActionType): void {
+    this.run(
+      "UPDATE web_automation_jobs SET status = 'pending', startedAt = NULL, completedAt = NULL, error = NULL WHERE action = ? AND status IN ('paused', 'failed', 'processing', 'login_required', 'security_check_required', 'cancelled')",
+      [action]
+    );
+    this.persist();
+  }
+
+  hasUnfinishedWebJobs(): boolean {
+    const row = this.get<{ count: number }>(
+      "SELECT COUNT(*) as count FROM web_automation_jobs WHERE status IN ('pending', 'processing', 'paused')"
+    );
+    return (row?.count ?? 0) > 0;
+  }
+
+  countWebJobsByStatus(action?: ActionType): Record<WebJobStatus, number> {
+    const counts = Object.fromEntries(WEB_JOB_STATUSES.map((status) => [status, 0])) as Record<WebJobStatus, number>;
+    const rows = action
+      ? this.all<{ status: string; count: number }>(
+          "SELECT status, COUNT(*) as count FROM web_automation_jobs WHERE action = ? GROUP BY status",
+          [action]
+        )
+      : this.all<{ status: string; count: number }>(
+          "SELECT status, COUNT(*) as count FROM web_automation_jobs GROUP BY status"
+        );
+    for (const row of rows) {
+      if (row.status in counts) {
+        counts[row.status as WebJobStatus] = row.count;
+      }
+    }
+    return counts;
+  }
+
+  insertWebHistory(input: {
+    jobId: number | null;
+    username: string;
+    action: ActionType;
+    status: WebJobStatus;
+    error?: string | null;
+    errorCode?: WebErrorCode | null;
+    profileUrl?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+  }): WebAutomationHistory {
+    const timestamp = nowIso();
+    this.run(
+      "INSERT INTO web_automation_history (jobId, username, action, provider, status, error, errorCode, profileUrl, startedAt, completedAt, createdAt) VALUES (?, ?, ?, 'web', ?, ?, ?, ?, ?, ?, ?)",
+      [
+        input.jobId,
+        input.username,
+        input.action,
+        input.status,
+        input.error ?? null,
+        input.errorCode ?? null,
+        input.profileUrl ?? null,
+        input.startedAt ?? null,
+        input.completedAt ?? null,
+        timestamp
+      ]
+    );
+    this.persist();
+    const row = this.get<Record<string, SqlValue>>("SELECT * FROM web_automation_history ORDER BY id DESC LIMIT 1");
+    if (!row) {
+      throw new Error("Web history insert failed");
+    }
+    return this.mapWebHistory(row);
+  }
+
+  getWebHistory(search = "", dateRange: HistoryDateRange = "all"): WebAutomationHistory[] {
+    const where: string[] = [];
+    const params: SqlValue[] = [];
+    if (search.trim()) {
+      where.push("username LIKE ?");
+      params.push(`%${search.trim().replace(/^@/, "")}%`);
+    }
+    const rangeStart = rangeStartIso(dateRange);
+    if (rangeStart) {
+      where.push("createdAt >= ?");
+      params.push(rangeStart);
+    }
+    const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    return this.all<Record<string, SqlValue>>(
+      `SELECT * FROM web_automation_history ${clause} ORDER BY id DESC`,
+      params
+    ).map((row) => this.mapWebHistory(row));
+  }
+
+  getUnfollowQueueItems(): QueueItem[] {
+    return this.all<Record<string, SqlValue>>("SELECT * FROM unfollow_queue ORDER BY id DESC").map((row) =>
+      this.mapQueue(row)
+    );
+  }
+
+  touchQueueFromWebJob(job: WebAutomationJob): void {
+    const table = job.action === "FOLLOW" ? "follow_queue" : "unfollow_queue";
+    this.run(
+      `UPDATE ${table} SET status = ?, startedAt = ?, completedAt = ?, error = ?, lastActionAt = ? WHERE username = ?`,
+      [job.status, job.startedAt, job.completedAt, job.error, nowIso(), job.username]
+    );
+    this.persist();
+  }
+
+  private ensureWebSession(): void {
+    const existing = this.get<{ id: number }>("SELECT id FROM web_automation_sessions WHERE id = 1");
+    if (existing) {
+      return;
+    }
+    this.run(
+      "INSERT INTO web_automation_sessions (id, status, instagramUsername, lastCheckedAt, lastError, updatedAt) VALUES (1, 'disconnected', NULL, NULL, NULL, ?)",
+      [nowIso()]
+    );
+  }
+
+  private mapWebSessionStatus(value: SqlValue | undefined): WebSessionStatus {
+    const status = String(value ?? "disconnected");
+    if (
+      status === "login_required" ||
+      status === "connected" ||
+      status === "expired" ||
+      status === "security_check"
+    ) {
+      return status;
+    }
+    return "disconnected";
+  }
+
+  private mapWebJob(row: Record<string, SqlValue>): WebAutomationJob {
+    return {
+      id: Number(row.id),
+      username: String(row.username),
+      action: row.action === "UNFOLLOW" ? "UNFOLLOW" : "FOLLOW",
+      provider: "web",
+      status: String(row.status) as WebJobStatus,
+      profileUrl: row.profileUrl ? String(row.profileUrl) : null,
+      error: row.error ? String(row.error) : null,
+      errorCode: row.errorCode ? (String(row.errorCode) as WebErrorCode) : null,
+      createdAt: String(row.createdAt),
+      startedAt: row.startedAt ? String(row.startedAt) : null,
+      completedAt: row.completedAt ? String(row.completedAt) : null
+    };
+  }
+
+  private mapWebHistory(row: Record<string, SqlValue>): WebAutomationHistory {
+    return {
+      id: Number(row.id),
+      jobId: row.jobId === null || row.jobId === undefined ? null : Number(row.jobId),
+      username: String(row.username),
+      action: row.action === "UNFOLLOW" ? "UNFOLLOW" : "FOLLOW",
+      provider: "web",
+      status: String(row.status) as WebJobStatus,
+      error: row.error ? String(row.error) : null,
+      errorCode: row.errorCode ? (String(row.errorCode) as WebErrorCode) : null,
+      profileUrl: row.profileUrl ? String(row.profileUrl) : null,
+      startedAt: row.startedAt ? String(row.startedAt) : null,
+      completedAt: row.completedAt ? String(row.completedAt) : null,
+      createdAt: String(row.createdAt)
+    };
   }
 
   private ensureDefaultSettings(): void {

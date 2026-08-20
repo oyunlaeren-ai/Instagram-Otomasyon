@@ -1,7 +1,7 @@
 import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import fs from "node:fs";
 import { IPC_CHANNELS } from "@shared/ipc";
-import type { ActionType } from "@shared/constants";
+import type { ActionType, HistoryDateRange } from "@shared/constants";
 import { parseCsvUsernames, sanitizeUsername, toCsv, toUserMessage } from "@shared/utils";
 import { InstagramServiceError } from "@shared/errors";
 import type { DatabaseService } from "../database/DatabaseService";
@@ -9,6 +9,8 @@ import type { AutomationManager } from "../services/automation/AutomationManager
 import type { JobQueue } from "../services/automation/JobQueue";
 import type { InstagramAuthService } from "../services/instagram/InstagramAuthService";
 import type { InstagramService } from "../services/instagram/InstagramService";
+import type { WebInstagramAutomationService } from "../services/instagram/WebInstagramAutomationService";
+import type { WebAutomationEngine } from "../services/automation/WebAutomationEngine";
 
 export interface IpcContext {
   database: DatabaseService;
@@ -18,6 +20,8 @@ export interface IpcContext {
   getService: () => InstagramService;
   getWindow: () => BrowserWindow | null;
   reinitializeDatabase: () => Promise<void>;
+  webAutomation: WebInstagramAutomationService;
+  webEngine: WebAutomationEngine;
 }
 
 function wrap<T>(fn: () => Promise<T> | T): Promise<T> {
@@ -49,7 +53,8 @@ function cleanUsernames(values: unknown): string[] {
 }
 
 export function registerIpc(context: IpcContext): void {
-  const { database, automation, queue, auth, getService, getWindow, reinitializeDatabase } = context;
+  const { database, automation, queue, auth, getService, getWindow, reinitializeDatabase, webAutomation, webEngine } =
+    context;
 
   ipcMain.handle(IPC_CHANNELS.dashboard.stats, () =>
     wrap(async () => {
@@ -231,7 +236,13 @@ export function registerIpc(context: IpcContext): void {
     })
   );
 
-  ipcMain.handle(IPC_CHANNELS.data.reset, () => wrap(() => database.resetUserData()));
+  ipcMain.handle(IPC_CHANNELS.data.reset, () =>
+    wrap(async () => {
+      await webEngine.stop();
+      await webAutomation.logout();
+      database.resetUserData();
+    })
+  );
   ipcMain.handle(IPC_CHANNELS.app.version, () => wrap(() => app.getVersion()));
   ipcMain.handle(IPC_CHANNELS.app.capabilities, () => wrap(() => getService().getCapabilities()));
   ipcMain.handle(IPC_CHANNELS.media.list, () =>
@@ -245,5 +256,37 @@ export function registerIpc(context: IpcContext): void {
         throw error;
       }
     })
+  );
+
+  ipcMain.handle(IPC_CHANNELS.webAutomation.status, () => wrap(() => webEngine.getStatus()));
+  ipcMain.handle(IPC_CHANNELS.webAutomation.login, () => wrap(() => webAutomation.login()));
+  ipcMain.handle(IPC_CHANNELS.webAutomation.logout, () => wrap(() => webAutomation.logout()));
+  ipcMain.handle(IPC_CHANNELS.webAutomation.checkSession, () => wrap(() => webAutomation.checkSession()));
+  ipcMain.handle(IPC_CHANNELS.webAutomation.startFollow, (_event, usernames: unknown) =>
+    wrap(() => {
+      const names = cleanUsernames(usernames);
+      const fallback = names.length ? names : database.getFollowQueue().map((item) => item.username);
+      return webEngine.startFollow(fallback);
+    })
+  );
+  ipcMain.handle(IPC_CHANNELS.webAutomation.startUnfollow, (_event, usernames: unknown) =>
+    wrap(() => {
+      const names = cleanUsernames(usernames);
+      if (names.length) {
+        database.addUnfollowQueueItems(names);
+      }
+      const fallback = names.length ? names : database.getUnfollowQueueItems().map((item) => item.username);
+      return webEngine.startUnfollow(fallback);
+    })
+  );
+  ipcMain.handle(IPC_CHANNELS.webAutomation.pause, () => wrap(() => webEngine.pause()));
+  ipcMain.handle(IPC_CHANNELS.webAutomation.resume, () => wrap(() => webEngine.resume()));
+  ipcMain.handle(IPC_CHANNELS.webAutomation.restart, () => wrap(() => webEngine.restart()));
+  ipcMain.handle(IPC_CHANNELS.webAutomation.stop, () => wrap(() => webEngine.stop()));
+  ipcMain.handle(IPC_CHANNELS.webAutomation.getQueue, (_event, action: ActionType) =>
+    wrap(() => database.getWebJobs(action === "UNFOLLOW" ? "UNFOLLOW" : "FOLLOW"))
+  );
+  ipcMain.handle(IPC_CHANNELS.webAutomation.getHistory, (_event, search: unknown, dateRange: HistoryDateRange) =>
+    wrap(() => database.getWebHistory(typeof search === "string" ? search : "", dateRange ?? "all"))
   );
 }

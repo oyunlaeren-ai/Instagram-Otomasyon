@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAppStore } from "../stores/appStore";
 import { AccountCard } from "../components/AccountCard";
 import { Modal } from "../components/Ui";
+import { WebSessionPanel } from "../components/WebSessionPanel";
 
 export function SettingsPage() {
   const settings = useAppStore((state) => state.settings);
@@ -9,6 +10,7 @@ export function SettingsPage() {
   const pushToast = useAppStore((state) => state.pushToast);
   const refresh = useAppStore((state) => state.refresh);
   const version = useAppStore((state) => state.version);
+  const webAutomation = useAppStore((state) => state.webAutomation);
   const [resetStep, setResetStep] = useState(0);
 
   return (
@@ -22,6 +24,16 @@ export function SettingsPage() {
 
       <h3>Hesap</h3>
       <AccountCard />
+
+      <article className="card" style={{ marginTop: 16 }}>
+        <div className="card-body">
+          <WebSessionPanel session={webAutomation.session} />
+          <p className="hint">
+            Web oturumu resmi Instagram API token’ından ayrıdır. Instagram kullanıcı adı ve şifresi uygulamaya
+            kaydedilmez.
+          </p>
+        </div>
+      </article>
 
       <div className="grid two-col" style={{ marginTop: 16 }}>
         <article className="card">

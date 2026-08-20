@@ -10,9 +10,12 @@ import { ActionLogger } from "./services/automation/ActionLogger";
 import { RateLimiter } from "./services/automation/RateLimiter";
 import { ActionWorker } from "./services/automation/ActionWorker";
 import { AutomationManager } from "./services/automation/AutomationManager";
+import { WebAutomationEngine } from "./services/automation/WebAutomationEngine";
 import { InstagramServiceFactory } from "./services/instagram/InstagramServiceFactory";
 import { InstagramAuthService } from "./services/instagram/InstagramAuthService";
 import { closeOAuthCallbackListener } from "./services/instagram/OAuthCallbackServer";
+import { ElectronInstagramWebDriver } from "./services/instagram/ElectronInstagramWebDriver";
+import { WebInstagramAutomationService } from "./services/instagram/WebInstagramAutomationService";
 import { EncryptedFileTokenStore } from "./services/security/TokenStore";
 import { RotatingFileLogger } from "./services/logging/FileLogger";
 import { IPC_CHANNELS } from "@shared/ipc";
@@ -139,6 +142,14 @@ app.whenReady().then(async () => {
 
   const automation = new AutomationManager(database, queue, worker, rateLimiter, getService, notify);
   const auth = new InstagramAuthService(database, tokenStore, getService);
+  const webDriver = new ElectronInstagramWebDriver();
+  const webAutomation = new WebInstagramAutomationService(database, webDriver);
+  const webEngine = new WebAutomationEngine(
+    database,
+    webAutomation,
+    () => Math.max(5, database.getSettings().actionDelaySeconds) * 1000,
+    notify
+  );
 
   let mainWindow: BrowserWindow | null = createWindow();
 
@@ -151,11 +162,16 @@ app.whenReady().then(async () => {
     getWindow: () => mainWindow,
     reinitializeDatabase: async () => {
       await database.initialize();
-    }
+    },
+    webAutomation,
+    webEngine
   });
 
   automation.onStatus((status) => {
     mainWindow?.webContents.send(IPC_CHANNELS.events.automation, status);
+  });
+  webEngine.onStatus((status) => {
+    mainWindow?.webContents.send(IPC_CHANNELS.events.webAutomation, status);
   });
 
   app.on("activate", () => {
@@ -170,6 +186,7 @@ app.whenReady().then(async () => {
   app.on("before-quit", () => {
     shutdownListener();
     void automation.stop();
+    void webEngine.stop();
     database.close();
   });
   app.on("will-quit", shutdownListener);

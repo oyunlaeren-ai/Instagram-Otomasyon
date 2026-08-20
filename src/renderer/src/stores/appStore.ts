@@ -3,7 +3,8 @@ import type {
   AppSettings,
   AutomationRuntimeStatus,
   ConnectionSnapshot,
-  DashboardStats
+  DashboardStats,
+  WebAutomationRuntimeStatus
 } from "@shared/types";
 
 const defaultSettings: AppSettings = {
@@ -30,6 +31,30 @@ const defaultStatus: AutomationRuntimeStatus = {
   pending: 0,
   currentUsername: null,
   lastAction: null,
+  lastError: null,
+  interrupted: false
+};
+
+const defaultWebStatus: WebAutomationRuntimeStatus = {
+  running: false,
+  paused: false,
+  session: {
+    status: "disconnected",
+    connected: false,
+    instagramUsername: null,
+    lastCheckedAt: null,
+    lastError: null,
+    message: "Bağlı değil"
+  },
+  action: null,
+  processed: 0,
+  total: 0,
+  success: 0,
+  alreadyFollowing: 0,
+  alreadyUnfollowed: 0,
+  failed: 0,
+  pending: 0,
+  currentUsername: null,
   lastError: null,
   interrupted: false
 };
@@ -63,6 +88,7 @@ interface AppState {
   settings: AppSettings;
   connection: ConnectionSnapshot;
   automation: AutomationRuntimeStatus;
+  webAutomation: WebAutomationRuntimeStatus;
   stats: DashboardStats | null;
   version: string;
   loading: boolean;
@@ -81,6 +107,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: defaultSettings,
   connection: defaultConnection,
   automation: defaultStatus,
+  webAutomation: defaultWebStatus,
   stats: null,
   version: "1.0.0",
   loading: true,
@@ -96,6 +123,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     window.api.onAutomationStatus((automation) => set({ automation }));
+    window.api.onWebAutomationStatus((webAutomation) => set({ webAutomation }));
     window.api.onToast((payload) => get().pushToast(payload.type, payload.message));
     await get().refresh();
   },
@@ -108,14 +136,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     try {
-      const [settings, connection, automation, stats, version] = await Promise.all([
+      const [settings, connection, automation, webAutomation, stats, version] = await Promise.all([
         window.api.getSettings(),
         window.api.getConnectionStatus(),
         window.api.getAutomationStatus(),
+        window.api.getWebAutomationStatus(),
         window.api.getDashboardStats(),
         window.api.getAppVersion()
       ]);
-      set({ settings, connection, automation, stats, version, loading: false, error: null });
+      set({ settings, connection, automation, webAutomation, stats, version, loading: false, error: null });
     } catch {
       set({
         loading: false,

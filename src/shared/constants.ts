@@ -83,3 +83,40 @@ export type HistoryFilter = (typeof HISTORY_FILTERS)[number];
 
 export const HISTORY_DATE_RANGES = ["today", "7d", "30d", "all"] as const;
 export type HistoryDateRange = (typeof HISTORY_DATE_RANGES)[number];
+
+export const WEB_SESSION_STATUSES = [
+  "disconnected",
+  "login_required",
+  "connected",
+  "expired",
+  "security_check"
+] as const;
+export type WebSessionStatus = (typeof WEB_SESSION_STATUSES)[number];
+
+export const WEB_JOB_STATUSES = [
+  "pending",
+  "processing",
+  "success",
+  "already_following",
+  "already_unfollowed",
+  "failed",
+  "paused",
+  "cancelled",
+  "login_required",
+  "security_check_required",
+  "user_not_found"
+] as const;
+export type WebJobStatus = (typeof WEB_JOB_STATUSES)[number];
+
+export const WEB_ERROR_CODES = [
+  "user_not_found",
+  "profile_unavailable",
+  "login_required",
+  "session_expired",
+  "security_check_required",
+  "captcha_required",
+  "temporary_error",
+  "failed",
+  "stopped"
+] as const;
+export type WebErrorCode = (typeof WEB_ERROR_CODES)[number];

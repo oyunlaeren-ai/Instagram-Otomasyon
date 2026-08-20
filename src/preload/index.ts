@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS, type IpcApi } from "@shared/ipc";
-import type { AutomationRuntimeStatus } from "@shared/types";
+import type { AutomationRuntimeStatus, WebAutomationRuntimeStatus } from "@shared/types";
 
 const api: IpcApi = {
   getDashboardStats: () => ipcRenderer.invoke(IPC_CHANNELS.dashboard.stats),
@@ -46,10 +46,28 @@ const api: IpcApi = {
   getAppVersion: () => ipcRenderer.invoke(IPC_CHANNELS.app.version),
   getCapabilities: () => ipcRenderer.invoke(IPC_CHANNELS.app.capabilities),
   getMedia: () => ipcRenderer.invoke(IPC_CHANNELS.media.list),
+  getWebAutomationStatus: () => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.status),
+  loginWebAutomation: () => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.login),
+  logoutWebAutomation: () => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.logout),
+  checkWebAutomationSession: () => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.checkSession),
+  startWebFollow: (usernames) => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.startFollow, usernames),
+  startWebUnfollow: (usernames) => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.startUnfollow, usernames),
+  pauseWebAutomation: () => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.pause),
+  resumeWebAutomation: () => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.resume),
+  restartWebAutomation: () => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.restart),
+  stopWebAutomation: () => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.stop),
+  getWebAutomationQueue: (action) => ipcRenderer.invoke(IPC_CHANNELS.webAutomation.getQueue, action),
+  getWebAutomationHistory: (search, dateRange) =>
+    ipcRenderer.invoke(IPC_CHANNELS.webAutomation.getHistory, search, dateRange),
   onAutomationStatus: (callback) => {
     const listener = (_event: unknown, status: AutomationRuntimeStatus) => callback(status);
     ipcRenderer.on(IPC_CHANNELS.events.automation, listener);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.events.automation, listener);
+  },
+  onWebAutomationStatus: (callback) => {
+    const listener = (_event: unknown, status: WebAutomationRuntimeStatus) => callback(status);
+    ipcRenderer.on(IPC_CHANNELS.events.webAutomation, listener);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.events.webAutomation, listener);
   },
   onToast: (callback) => {
     const listener = (_event: unknown, payload: { type: "info" | "success" | "error"; message: string }) =>

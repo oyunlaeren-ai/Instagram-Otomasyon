@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import type { UnfollowFilter, UserRecord } from "@shared/types";
+import type { UnfollowFilter, UserRecord, WebAutomationJob } from "@shared/types";
 import { formatDateTime } from "@shared/utils";
-import { EmptyState } from "../components/Ui";
+import { EmptyState, StatusBadge } from "../components/Ui";
+import { WebSessionPanel } from "../components/WebSessionPanel";
 import { useAppStore } from "../stores/appStore";
 
 const filters: Array<{ id: UnfollowFilter; label: string }> = [
@@ -12,15 +13,33 @@ const filters: Array<{ id: UnfollowFilter; label: string }> = [
 
 export function UnfollowPage() {
   const connection = useAppStore((state) => state.connection);
+  const webAutomation = useAppStore((state) => state.webAutomation);
   const refresh = useAppStore((state) => state.refresh);
   const pushToast = useAppStore((state) => state.pushToast);
   const [filter, setFilter] = useState<UnfollowFilter>("not_following_back");
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [draft, setDraft] = useState("");
+  const [jobs, setJobs] = useState<WebAutomationJob[]>([]);
 
   useEffect(() => {
     void window.api.getUnfollowQueue(filter).then(setUsers);
   }, [filter]);
+
+  useEffect(() => {
+    void Promise.all([window.api.getWebAutomationQueue("UNFOLLOW")]).then(([webJobs]) => setJobs(webJobs));
+  }, [webAutomation.processed, webAutomation.pending, webAutomation.running]);
+
+  async function startWeb() {
+    const fromDraft = draft
+      .split(/[\n,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const usernames = [...new Set([...selected, ...fromDraft, ...jobs.map((job) => job.username)])];
+    await window.api.startWebUnfollow(usernames);
+    await refresh();
+    setJobs(await window.api.getWebAutomationQueue("UNFOLLOW"));
+  }
 
   return (
     <section className="page">
@@ -29,6 +48,86 @@ export function UnfollowPage() {
           <h2>Takipten Çıkarma</h2>
           <p>Filtreleyin, seçin ve kuyruğa alın.</p>
         </div>
+      </div>
+      <div className="grid two-col">
+        <article className="card">
+          <div className="card-body">
+            <h3>Instagram API</h3>
+            <p>
+              <span
+                className="status-dot"
+                style={{ background: connection.connected ? "var(--success)" : "var(--danger)" }}
+              />
+              {connection.connected ? "Hesap bağlı" : "Hesap bağlı değil"}
+            </p>
+            {!connection.unfollowSupported ? (
+              <div className="hint">
+                <p>Instagram'ın resmi API'si başka hesapları takipten çıkarmayı desteklemiyor.</p>
+                <p>Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz.</p>
+                <p>
+                  Resmi Instagram API takipten çıkarmayı desteklemiyor. Bu işlem Web Otomasyonu ile Instagram web
+                  arayüzünde gerçekleştirilir.
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </article>
+        <article className="card">
+          <div className="card-body">
+            <h3>Instagram Web Otomasyonu</h3>
+            <WebSessionPanel session={webAutomation.session} />
+            <textarea
+              className="textarea"
+              placeholder="@kullanici1&#10;@kullanici2"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <div className="toolbar">
+              <button className="btn success" disabled={!webAutomation.session.connected} onClick={() => void startWeb()}>
+                Web Otomasyonunu Başlat
+              </button>
+              <button className="btn" disabled={!webAutomation.running} onClick={() => void window.api.pauseWebAutomation()}>
+                Duraklat
+              </button>
+              <button
+                className="btn"
+                disabled={!webAutomation.paused && !webAutomation.interrupted}
+                onClick={() => void window.api.resumeWebAutomation()}
+              >
+                Devam Et
+              </button>
+              <button className="btn danger" onClick={() => void window.api.stopWebAutomation()}>
+                Durdur
+              </button>
+            </div>
+            <p>
+              Toplam: {webAutomation.total} · Başarılı: {webAutomation.success} · Zaten takip edilmiyor:{" "}
+              {webAutomation.alreadyUnfollowed} · Bekleyen: {webAutomation.pending} · Başarısız: {webAutomation.failed}
+            </p>
+            {jobs.length > 0 ? (
+              <div className="table-wrap" style={{ marginTop: 12 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Kullanıcı</th>
+                      <th>Durum</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobs.map((job) => (
+                      <tr key={job.id}>
+                        <td>@{job.username}</td>
+                        <td>
+                          <StatusBadge status={job.status} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        </article>
       </div>
       <div className="filters">
         {filters.map((item) => (

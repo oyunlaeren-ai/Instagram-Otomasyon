@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { HistoryDateRange, HistoryFilter, AutomationLog } from "@shared/types";
+import type { HistoryDateRange, HistoryFilter, AutomationLog, WebAutomationHistory } from "@shared/types";
 import { formatDateTime } from "@shared/utils";
 import { EmptyState, StatusBadge } from "../components/Ui";
 
@@ -25,10 +25,34 @@ export function HistoryPage() {
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<HistoryDateRange>("all");
   const [logs, setLogs] = useState<AutomationLog[]>([]);
+  const [webLogs, setWebLogs] = useState<WebAutomationHistory[]>([]);
 
   useEffect(() => {
     void window.api.getHistory(filter, search, dateRange).then(setLogs);
+    void window.api.getWebAutomationHistory(search, dateRange).then(setWebLogs);
   }, [filter, search, dateRange]);
+
+  const visibleWeb = webLogs.filter((item) => {
+    if (filter === "follow") {
+      return item.action === "FOLLOW";
+    }
+    if (filter === "unfollow") {
+      return item.action === "UNFOLLOW";
+    }
+    if (filter === "success") {
+      return item.status === "success" || item.status === "already_following" || item.status === "already_unfollowed";
+    }
+    if (filter === "failed") {
+      return item.status === "failed" || item.status === "user_not_found";
+    }
+    if (filter === "cancelled") {
+      return item.status === "cancelled";
+    }
+    if (filter === "unsupported") {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <section className="page">
@@ -71,7 +95,7 @@ export function HistoryPage() {
       </div>
       <article className="card">
         <div className="card-body table-wrap">
-          {logs.length === 0 ? (
+          {logs.length === 0 && visibleWeb.length === 0 ? (
             <EmptyState label="İşlem geçmişi boş." />
           ) : (
             <table>
@@ -80,16 +104,30 @@ export function HistoryPage() {
                   <th>Tarih</th>
                   <th>Kullanıcı</th>
                   <th>İşlem</th>
+                  <th>Kaynak</th>
                   <th>Durum</th>
                   <th>Hata</th>
                 </tr>
               </thead>
               <tbody>
+                {visibleWeb.map((log) => (
+                  <tr key={`web-${log.id}`}>
+                    <td>{formatDateTime(log.completedAt ?? log.createdAt)}</td>
+                    <td>@{log.username}</td>
+                    <td>{log.action}</td>
+                    <td>WEB</td>
+                    <td>
+                      <StatusBadge status={log.status} />
+                    </td>
+                    <td>{log.error ?? "—"}</td>
+                  </tr>
+                ))}
                 {logs.map((log) => (
-                  <tr key={log.id}>
+                  <tr key={`api-${log.id}`}>
                     <td>{formatDateTime(log.createdAt)}</td>
                     <td>@{log.username}</td>
                     <td>{log.action}</td>
+                    <td>API</td>
                     <td>
                       <StatusBadge status={log.status} />
                     </td>

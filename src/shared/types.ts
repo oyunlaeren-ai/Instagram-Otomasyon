@@ -10,7 +10,10 @@ import type {
   ListType,
   RelationshipFilter,
   Theme,
-  UnfollowFilter
+  UnfollowFilter,
+  WebErrorCode,
+  WebJobStatus,
+  WebSessionStatus
 } from "./constants";
 
 export interface AccountRecord {
@@ -190,6 +193,61 @@ export interface PaginatedResult<T> {
   pageSize: number;
 }
 
+export interface WebSessionSnapshot {
+  status: WebSessionStatus;
+  connected: boolean;
+  instagramUsername: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  message: string;
+}
+
+export interface WebAutomationJob {
+  id: number;
+  username: string;
+  action: ActionType;
+  provider: "web";
+  status: WebJobStatus;
+  profileUrl: string | null;
+  error: string | null;
+  errorCode: WebErrorCode | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface WebAutomationHistory {
+  id: number;
+  jobId: number | null;
+  username: string;
+  action: ActionType;
+  provider: "web";
+  status: WebJobStatus;
+  error: string | null;
+  errorCode: WebErrorCode | null;
+  profileUrl: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export interface WebAutomationRuntimeStatus {
+  running: boolean;
+  paused: boolean;
+  session: WebSessionSnapshot;
+  action: ActionType | null;
+  processed: number;
+  total: number;
+  success: number;
+  alreadyFollowing: number;
+  alreadyUnfollowed: number;
+  failed: number;
+  pending: number;
+  currentUsername: string | null;
+  lastError: string | null;
+  interrupted: boolean;
+}
+
 export type {
   ActionType,
   ConnectionStatus,
@@ -202,5 +260,8 @@ export type {
   ListType,
   RelationshipFilter,
   Theme,
-  UnfollowFilter
+  UnfollowFilter,
+  WebErrorCode,
+  WebJobStatus,
+  WebSessionStatus
 };

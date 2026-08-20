@@ -19,11 +19,13 @@ describe("official api limitation copy", () => {
   });
 
   it("shows follow queue rows as unsupported instead of waiting when follow is not supported", () => {
-    expect(followPage).toContain('<span className="badge unsupported">API desteklemiyor</span>');
+    expect(followPage).toContain("Web Otomasyonunu Başlat");
+    expect(followPage).toContain("disabled={!webAutomation.session.connected}");
     expect(followPage).toMatch(
       /connection\.followSupported[\s\S]*\?[\s\S]*item\.lastActionAt[\s\S]*Instagram'ın resmi API'si başka hesapları takip etmeyi desteklemiyor\./
     );
     expect(followPage).toContain("disabled={!connection.followSupported}");
+    expect(followPage).toContain('<span className="badge">Listede</span>');
   });
 
   it("disables unfollow actions and explains the Meta API limit", () => {
@@ -32,6 +34,8 @@ describe("official api limitation copy", () => {
     expect(unfollowPage).toContain("Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz.");
     expect(unfollowPage).not.toContain("Bu işlem mevcut Instagram API izinleriyle kullanılamıyor.");
     expect(unfollowPage).toMatch(/if \(!connection\.unfollowSupported\) \{\s*return;/);
+    expect(unfollowPage).toContain("Web Otomasyonunu Başlat");
+    expect(unfollowPage).toContain("disabled={!webAutomation.session.connected}");
   });
 
   it("does not present an empty non-followers table as zero users when lists are unsupported", () => {
