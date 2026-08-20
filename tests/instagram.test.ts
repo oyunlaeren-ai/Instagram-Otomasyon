@@ -512,7 +512,14 @@ describe("oauth and accounts", () => {
 
   it("exposes official capabilities without follow", () => {
     const official = new OfficialInstagramService(new MemoryTokenStore());
+    expect(official.followSupported).toBe(false);
+    expect(official.unfollowSupported).toBe(false);
+    expect(official.followersListSupported).toBe(false);
+    expect(official.followingListSupported).toBe(false);
     expect(official.getCapabilities().canFollow).toBe(false);
+    expect(official.getCapabilities().canUnfollow).toBe(false);
+    expect(official.getCapabilities().canGetFollowers).toBe(false);
+    expect(official.getCapabilities().canGetFollowing).toBe(false);
     expect(official.getCapabilities().canGetProfile).toBe(true);
   });
 });

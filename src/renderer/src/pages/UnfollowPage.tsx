@@ -52,6 +52,9 @@ export function UnfollowPage() {
           className="btn"
           disabled={!connection.unfollowSupported}
           onClick={async () => {
+            if (!connection.unfollowSupported) {
+              return;
+            }
             await window.api.enqueueUnfollowSelected(selected);
             pushToast("success", "Seçilenler kaldırılmak üzere kuyruğa alındı.");
           }}
@@ -62,6 +65,9 @@ export function UnfollowPage() {
           className="btn success"
           disabled={!connection.unfollowSupported}
           onClick={async () => {
+            if (!connection.unfollowSupported) {
+              return;
+            }
             if (selected.length) {
               await window.api.enqueueUnfollowSelected(selected);
             }
@@ -83,7 +89,10 @@ export function UnfollowPage() {
         </button>
       </div>
       {!connection.unfollowSupported ? (
-        <div className="hint">Bu işlem mevcut Instagram API izinleriyle kullanılamıyor.</div>
+        <div className="hint">
+          <p>Instagram'ın resmi API'si başka hesapları takipten çıkarmayı desteklemiyor.</p>
+          <p>Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz.</p>
+        </div>
       ) : null}
       <article className="card">
         <div className="card-body table-wrap">

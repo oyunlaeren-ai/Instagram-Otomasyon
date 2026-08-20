@@ -38,7 +38,6 @@ export function FollowPage() {
 
   async function enqueueAndMaybeStart(start: boolean) {
     if (!connection.followSupported) {
-      pushToast("error", "Bu işlem mevcut Instagram API izinleriyle kullanılamıyor.");
       return;
     }
     await window.api.enqueueFollowSelected(selected.length ? selected : items.map((item) => item.id));
@@ -61,7 +60,10 @@ export function FollowPage() {
         </div>
       </div>
       {!connection.followSupported ? (
-        <p className="hint">Bu işlem mevcut Instagram API izinleriyle kullanılamıyor.</p>
+        <div className="hint">
+          <p>Instagram'ın resmi API'si başka hesapları takip etmeyi desteklemiyor.</p>
+          <p>Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz.</p>
+        </div>
       ) : null}
       <article className="card">
         <div className="card-body">
@@ -107,7 +109,10 @@ export function FollowPage() {
             </button>
           </div>
           {!connection.followSupported ? (
-            <div className="hint">Takip Et işlemi mevcut Instagram API izinleriyle kullanılamıyor.</div>
+            <div className="hint">
+              <p>Instagram'ın resmi API'si başka hesapları takip etmeyi desteklemiyor.</p>
+              <p>Bu özellik mevcut resmi Meta/Instagram API sınırları nedeniyle kullanılamaz.</p>
+            </div>
           ) : null}
         </div>
       </article>
